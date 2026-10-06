@@ -2,8 +2,8 @@
   "manifest_version": 1,
   "id": "signoz-connector",
   "name": "SigNoz Connector",
-  "version": "0.1.0",
-  "description": "Forwards this workspace's OpenTelemetry traces, metrics and logs to a SigNoz you already have — a central one, or the aw-app-signoz of another workspace. One small OTel Collector container (~256 MB), no ClickHouse and no UI of its own: it receives OTLP from core and from this workspace's apps, stamps workspace.slug on everything, and ships it on with a disk-backed queue so an unreachable destination buffers instead of dropping. The destination is not configured here — it comes from Settings > Observability, which stays the single source of truth and pushes it in on save. If you want to STORE and BROWSE telemetry inside this workspace instead of forwarding it, install the full SigNoz app (aw-app-signoz) rather than this one.",
+  "version": "0.2.0",
+  "description": "Forwards this workspace's OpenTelemetry traces, metrics and logs to a SigNoz you already have \u2014 a central one, or the aw-app-signoz of another workspace. One small OTel Collector container (~256 MB), no ClickHouse and no UI of its own: it receives OTLP from core and from this workspace's apps, stamps workspace.slug on everything, and ships it on with a disk-backed queue so an unreachable destination buffers instead of dropping. The destination is not configured here \u2014 it comes from Settings > Observability, which stays the single source of truth and pushes it in on save. If you want to STORE and BROWSE telemetry inside this workspace instead of forwarding it, install the full SigNoz app (aw-app-signoz) rather than this one.",
   "icon": "share-2",
   "tier": "container",
   "category": "Observability",
@@ -30,11 +30,11 @@
         "source": "container/otelcol/config.yaml",
         "target": "/etc/otelcol-contrib/config.yaml",
         "mode": "ro",
-        "reason": "The collector's whole pipeline. Mounted at exactly the path the upstream image's own CMD already reads (verified: ENTRYPOINT=[/otelcol-contrib] CMD=[--config /etc/otelcol-contrib/config.yaml]), because a Tier-2 manifest has no command/entrypoint override — so replacing the default config file IS the only way to configure a stock collector image. Runtime values reach it as ${env:...} placeholders from runtime.env above, never baked in."
+        "reason": "The collector's whole pipeline. Mounted at exactly the path the upstream image's own CMD already reads (verified: ENTRYPOINT=[/otelcol-contrib] CMD=[--config /etc/otelcol-contrib/config.yaml]), because a Tier-2 manifest has no command/entrypoint override \u2014 so replacing the default config file IS the only way to configure a stock collector image. Runtime values reach it as ${env:...} placeholders from runtime.env above, never baked in."
       }
     ]
   },
-  "comment_volumes": "There is deliberately NO $AW_APP_DATA volume, and therefore no fs:workspace-data permission. The design (§2) asks for a file_storage-backed sending_queue on one; it was built that way first and crash-looped on 'permission denied' (measured 2026-10-06): this image is USER 10001:10001, core creates the $AW_APP_DATA bind-mount directory as the workspace's own uid with mode 0755, and a Tier-2 manifest can change neither side — there is no `user` field and run_flags_needed accepts only --shm-size. The queue is in-memory instead, which covers a transient outage but not a container recreate. See container/otelcol/config.yaml's extensions block and README.md; routed to the architect.",
+  "comment_volumes": "There is deliberately NO $AW_APP_DATA volume, and therefore no fs:workspace-data permission. The design (\u00a72) asks for a file_storage-backed sending_queue on one; it was built that way first and crash-looped on 'permission denied' (measured 2026-10-06): this image is USER 10001:10001, core creates the $AW_APP_DATA bind-mount directory as the workspace's own uid with mode 0755, and a Tier-2 manifest can change neither side \u2014 there is no `user` field and run_flags_needed accepts only --shm-size. The queue is in-memory instead, which covers a transient outage but not a container recreate. See container/otelcol/config.yaml's extensions block and README.md; routed to the architect.",
   "permissions": [
     "containers:manage"
   ],
@@ -43,7 +43,7 @@
       {
         "id": "aw-signoz-connector",
         "path": "skills/aw-signoz-connector/SKILL.md",
-        "description": "Send this workspace's OTLP telemetry through the SigNoz connector — the internal endpoint to point a sender at, where the destination actually comes from, and how to tell whether it is reaching it."
+        "description": "Send this workspace's OTLP telemetry through the SigNoz connector \u2014 the internal endpoint to point a sender at, where the destination actually comes from, and how to tell whether it is reaching it."
       }
     ]
   },
@@ -54,20 +54,20 @@
         "type": "string",
         "default": "",
         "title": "Destination OTLP endpoint (managed)",
-        "description": "MANAGED VALUE — do not edit by hand. Written by Settings > Observability every time that setting is saved (aw-workspace core's src/api/observability.py pushes the resolved destination here, which recreates this container). Editing it here is overwritten on the next save of that setting. Empty means nothing is configured, and the collector then exports to a dead loopback address so telemetry queues visibly instead of being silently dropped."
+        "description": "MANAGED VALUE \u2014 do not edit by hand. Written by Settings > Observability every time that setting is saved (aw-workspace core's src/api/observability.py pushes the resolved destination here, which recreates this container). Editing it here is overwritten on the next save of that setting. Empty means nothing is configured, and the collector then exports to a dead loopback address so telemetry queues visibly instead of being silently dropped."
       },
       "api_key": {
         "type": "string",
         "default": "",
         "title": "Destination credential (managed)",
         "x-secret": true,
-        "description": "MANAGED VALUE — do not edit by hand, same as the endpoint above. Sent to the destination as BOTH `Authorization: Bearer <value>` and `X-Api-Key: <value>`, because the two destinations this connector exists for authenticate differently: a central SigNoz behind aw-stack validates a bearer token (bearertokenauth), while an aw-app-signoz validates the workspace's own X-Api-Key. Both headers go to the same destination, so this costs no extra exposure and removes a header-name setting nobody could answer correctly."
+        "description": "MANAGED VALUE \u2014 do not edit by hand, same as the endpoint above. Sent to the destination as BOTH `Authorization: Bearer <value>` and `X-Api-Key: <value>`, because the two destinations this connector exists for authenticate differently: a central SigNoz behind aw-stack validates a bearer token (bearertokenauth), while an aw-app-signoz validates the workspace's own X-Api-Key. Both headers go to the same destination, so this costs no extra exposure and removes a header-name setting nobody could answer correctly."
       },
       "auto_start": {
         "type": "boolean",
         "default": true,
         "title": "Auto-start",
-        "description": "Start the connector when the workspace starts. Turning this off stops forwarding; core notices nothing and keeps exporting to this container's address, so telemetry is lost while it is down — leave it on unless you are deliberately taking forwarding offline."
+        "description": "Start the connector when the workspace starts. Turning this off stops forwarding; core notices nothing and keeps exporting to this container's address, so telemetry is lost while it is down \u2014 leave it on unless you are deliberately taking forwarding offline."
       }
     },
     "required": []
