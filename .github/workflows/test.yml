@@ -28,7 +28,10 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install deps
-        run: pip install pytest pyyaml jsonschema
+        # requirements-dev.txt is the one source of truth for test deps —
+        # the shared release workflow installs it too, and a dep that lives
+        # only here fails the RELEASE job while this one stays green.
+        run: pip install pytest jsonschema -r requirements-dev.txt
       # tests/validate_manifest.py falls back to a sibling aw-marketplace
       # checkout for the canonical schema when this repo has no local
       # schemas/ copy (by design), and actions/checkout refuses a `path` that

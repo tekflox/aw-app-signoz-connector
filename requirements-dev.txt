@@ -1,0 +1,10 @@
+# Test-only dependencies.
+#
+# This file is not optional scaffolding: aw-marketplace's shared
+# app-release.yml installs a FIXED set (pytest jsonschema fastapi httpx
+# uvicorn) and then `pip install -r requirements-dev.txt` only *if present*.
+# tests/test_collector_config.py parses the collector's YAML, so without this
+# file the release job fails on `ModuleNotFoundError: No module named 'yaml'`
+# while this repo's own test.yml passes — it installs pyyaml explicitly.
+# That split is exactly how the first release of this app failed.
+pyyaml
