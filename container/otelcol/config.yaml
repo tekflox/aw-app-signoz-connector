@@ -1,0 +1,199 @@
+# aw-app-signoz-connector — the whole collector pipeline.
+#
+# Mounted read-only at /etc/otelcol-contrib/config.yaml, which is the path the
+# stock otel/opentelemetry-collector-contrib image's own CMD already reads
+# (verified: ENTRYPOINT=[/otelcol-contrib] CMD=[--config
+# /etc/otelcol-contrib/config.yaml]). That matters: a Tier-2 aw-workspace
+# manifest has NO command/entrypoint override — src/apps/containers.py sets
+# neither — so replacing the default config file is the only way to configure
+# a stock collector image without forking it into a custom build.
+#
+# Every runtime value arrives as an environment variable from the manifest's
+# runtime.env, resolved from this app's config (${config.x}). Two independent
+# safety nets, because each catches a different failure:
+#
+#   1. Every ${config.x} the manifest references has a DEFAULT in
+#      config_schema. src/apps/containers.py::expand_env DROPS an unresolved
+#      placeholder entirely rather than passing an empty string, so without a
+#      default a never-saved config yields a collector with no endpoint at
+#      all. (The CRISPAL_SITE_URL incident, runtime.py:1468.)
+#   2. Every ${env:...} below carries a `:-` fallback. An EMPTY config value
+#      still resolves to None in expand_env and the variable is still dropped,
+#      and otelcol treats a referenced-but-unset variable as a fatal config
+#      error — which would crash-loop the container instead of degrading.
+#
+# Net effect of an unconfigured install: the collector starts cleanly and
+# exports to a dead loopback address, so telemetry QUEUES (bounded, in
+# memory) and the health endpoint goes unhealthy. Visible, not silent, not a
+# crash.
+
+extensions:
+  # NO file_storage extension, and this is a KNOWN GAP against the design
+  # (§2 asks for a file_storage-backed sending_queue on $AW_APP_DATA so an
+  # unreachable destination buffers across container recreates). It is not an
+  # oversight — it was tried first, and it crash-loops:
+  #
+  #   Error: cannot start pipelines: failed to start "otlphttp/upstream"
+  #   exporter: open /var/lib/otelcol/storage/exporter_otlphttp_upstream_logs:
+  #   permission denied
+  #
+  # Measured 2026-10-06 on a real install. This image is `USER 10001:10001`,
+  # core's `_container_volumes` creates the $AW_APP_DATA bind-mount directory
+  # as the workspace's own uid (1001 here) with mode 0755, and a Tier-2
+  # manifest has no way to change either side: no `user` field, and
+  # `run_flags_needed` accepts only `--shm-size`
+  # (src/apps/containers.py::_parse_run_flags).
+  #
+  # Core's unconditional CAP_CHOWN grant for every Tier-2 container exists for
+  # exactly this failure class (added 2026-09-18 for aw-app-browser) — but it
+  # only helps an image whose entrypoint runs as ROOT and chowns the mount
+  # itself. A stock image with a fixed non-root USER cannot use it, and a
+  # Tier-2 app cannot override the entrypoint to try.
+  #
+  # So the queue below is in-memory and the trade is explicit: a transient
+  # destination outage is still covered, but a CONTAINER RECREATE drops
+  # whatever is queued — and a destination change from
+  # Settings > Observability deliberately causes a recreate. Routed to the
+  # architect; the smallest real fix is teaching `_parse_run_flags` the
+  # `--user` flag (core change, needs the core-before-app rollout order and a
+  # trust decision about a marketplace app running as container root).
+  # README.md records it.
+
+  # Health endpoint. The response_body override is deliberate: it emits an
+  # {"ok": bool} shape so this can answer an aw-workspace `contributes.doctor`
+  # check directly.
+  #
+  # KNOWN GAP, measured not assumed (2026-10-06, against this exact image):
+  # the extension writes `Content-Type: text/plain; charset=utf-8` and
+  # IGNORES a `response_headers: {Content-Type: application/json}` override
+  # (the override is accepted into its config — it shows up as ResponseHeaders
+  # in the startup log — but the body writer sets the header itself). Core's
+  # doctor evaluator (src/apps/routes.py::_app_doctor_checks) only parses a
+  # body whose content-type starts with application/json, so a doctor entry
+  # pointed here would read ok:false forever. That is why this app ships NO
+  # contributes.doctor yet — see README.md "Why there is no doctor check".
+  # The endpoint itself is correct and useful by hand:
+  #   curl -s http://aw-app-signoz-connector:13133/healthz
+  health_check:
+    endpoint: 0.0.0.0:13133
+    path: /healthz
+    response_body:
+      healthy: '{"ok":true,"detail":"connector running and exporting"}'
+      unhealthy: '{"ok":false,"detail":"connector cannot reach its destination — check Settings > Observability"}'
+    # Turns "is the process up" into "is it actually delivering": the health
+    # state flips unhealthy after this many consecutive exporter failures.
+    # This is the signal that distinguishes a misconfigured connector from a
+    # working one, which is the whole failure mode worth watching — with the
+    # connector installed, core exports THROUGH it, so a connector that
+    # cannot deliver silences telemetry that a direct export would have
+    # delivered.
+    check_collector_pipeline:
+      enabled: true
+      interval: 5m
+      exporter_failure_threshold: 5
+
+receivers:
+  # INTERNAL ONLY. Nothing publishes these ports off the workspace and the
+  # app contributes no window and no public ingest route; the consumers are
+  # aw-workspace core itself (which resolves this container's address through
+  # runtime.containers.base_url, hence the manifest's port 4318) and this
+  # workspace's other apps.
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  # First in every pipeline. The container is capped at 256 MB by the
+  # manifest, and an unreachable destination is exactly when queued data
+  # grows — refusing new data under memory pressure is how that stays a
+  # degraded connector instead of an OOM-killed one.
+  memory_limiter:
+    check_interval: 5s
+    limit_mib: 192
+    spike_limit_mib: 48
+
+  # Defense in depth, not a decoration: core already stamps workspace.slug in
+  # src/api/otel.py::_build_resource, but anything else in this workspace that
+  # speaks OTLP may forget, and at the destination that attribute is the ONLY
+  # thing separating this workspace's telemetry from another's. Everything
+  # arriving through this connector IS this workspace, so upsert is safe and
+  # correct here.
+  #
+  # Worth stating plainly because the central relies on it: this is a
+  # client-set attribute and therefore NOT a security boundary — any sender
+  # holding the destination's credential can claim any slug. It is a
+  # query-time separator only (design §5).
+  resource/workspace:
+    attributes:
+      - key: workspace.slug
+        value: ${env:AW_WORKSPACE_SLUG:-unknown}
+        action: upsert
+
+  batch:
+    send_batch_size: 1000
+    send_batch_max_size: 1100
+    timeout: 5s
+
+exporters:
+  otlphttp/upstream:
+    # Both from Settings > Observability, pushed into this app's config on
+    # save. The loopback fallback is the unconfigured case: nothing listens
+    # there, so exports fail, the queue fills (bounded) and health_check goes
+    # unhealthy — rather than otelcol refusing to start on an unset variable.
+    endpoint: ${env:OTLP_UPSTREAM_ENDPOINT:-http://127.0.0.1:9}
+    headers:
+      # One credential, two header shapes, because the two destinations this
+      # connector exists for authenticate differently and the manifest only
+      # carries one value: a central SigNoz fronted by aw-stack validates
+      # `Authorization: Bearer <token>` (bearertokenauth), an aw-app-signoz
+      # validates `X-Api-Key`. Each destination ignores the header it does not
+      # use, and both headers go to the SAME place, so this costs nothing in
+      # exposure and removes a header-name setting nobody could answer
+      # correctly from the Observability tab.
+      Authorization: Bearer ${env:OTLP_UPSTREAM_API_KEY:-}
+      X-Api-Key: ${env:OTLP_UPSTREAM_API_KEY:-}
+    # In-memory, NOT disk-backed — see the extensions block above for why
+    # (the $AW_APP_DATA bind mount is unwritable by this image's fixed
+    # non-root uid, measured). Covers a transient destination outage; does
+    # NOT survive a container recreate. queue_size is left at the default on
+    # purpose: bounded is the point, and it is now also bounded by this
+    # container's 256 MB cap, which memory_limiter enforces first.
+    sending_queue:
+      enabled: true
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 60s
+      # Bounded. Past this the batch is dropped rather than retried forever —
+      # the queue above is what covers a transient outage; this stops a
+      # permanent misconfiguration from pinning the exporter on ancient data
+      # and starving current telemetry.
+      max_elapsed_time: 300s
+
+service:
+  extensions: [health_check]
+  # Deliberately NOT exporting the collector's own internal metrics anywhere:
+  # they would ride the same exporter to the same destination, so a failing
+  # exporter would generate telemetry about its own failure and try to send it
+  # through the thing that is failing. Same amplification class as
+  # src/api/otel.py::_AMPLIFICATION_PREFIXES on the Python side, and the
+  # aw-otelcol-edge anti-recursion filter on the bare metal.
+  telemetry:
+    metrics:
+      level: none
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resource/workspace, batch]
+      exporters: [otlphttp/upstream]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, resource/workspace, batch]
+      exporters: [otlphttp/upstream]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, resource/workspace, batch]
+      exporters: [otlphttp/upstream]
