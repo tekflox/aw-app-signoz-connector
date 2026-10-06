@@ -7,8 +7,9 @@ workspace's `aw-app-signoz`.
 One container (~256 MB): a stock `otel/opentelemetry-collector-contrib`,
 pinned. No ClickHouse, no UI, no window, nothing to query. It receives OTLP
 inside the workspace, stamps `workspace.slug` on everything, and ships it on
-with a disk-backed queue so an unreachable destination buffers instead of
-drops.
+with a retrying in-memory queue so a brief destination outage buffers
+instead of dropping. (The design asked for a disk-backed one; it could not
+be shipped — see "Things that will bite".)
 
 **Not the same app as `aw-app-signoz`.** That one is the full server —
 ClickHouse, query service, dashboards — for keeping telemetry *inside* this

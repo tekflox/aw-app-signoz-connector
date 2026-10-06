@@ -11,9 +11,14 @@ recreates the container; both fields are marked `MANAGED VALUE` for that
 reason.
 
 Pipeline is `memory_limiter` → `resource` (upserting `workspace.slug`) →
-`batch` → `otlphttp`, with a `file_storage`-backed `sending_queue` on
-`$AW_APP_DATA` so an unreachable destination buffers across container
-recreates rather than dropping. The credential goes out as both
+`batch` → `otlphttp`, with a retrying `sending_queue` so a brief
+destination outage buffers rather than dropping. That queue is **in-memory**,
+not the `file_storage`-backed one on `$AW_APP_DATA` the design asked for:
+built that way first, it crash-looped on `permission denied` because the
+stock image runs as `USER 10001` and cannot write the bind-mount directory
+core creates as the workspace uid — and a Tier-2 manifest can override
+neither side. So a transient outage is covered, a container recreate is not.
+The credential goes out as both
 `Authorization: Bearer` and `X-Api-Key`, since a central SigNoz and an
 `aw-app-signoz` authenticate differently and there is one value to carry.
 

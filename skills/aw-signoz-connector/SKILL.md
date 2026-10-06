@@ -97,11 +97,14 @@ is separated from every other sender at the destination.
 
 ## Gotchas worth knowing before you debug
 
-- **A queue that survives restarts.** Undelivered telemetry is buffered on
-  disk (`$AW_APP_DATA/queue`), so fixing a wrong destination can be followed
-  by a burst of backdated data rather than silence. That is working as
-  intended.
-- **Bounded, though.** The queue and the retry window are both bounded. A
+- **The queue does NOT survive a restart.** It is in-memory, so fixing a
+  wrong destination can be followed by a burst of backdated data — but only
+  what is still buffered in the *current* container. A recreate (which a
+  destination change deliberately causes) starts empty. The design asked for
+  a disk-backed queue; it could not be shipped, because the stock collector
+  image runs as a fixed non-root uid and cannot write the `$AW_APP_DATA`
+  directory core creates for it. Don't go looking for the files.
+- **Bounded, too.** The queue and the retry window are both bounded. A
   destination that has been wrong for a long time *will* have dropped data,
   and nothing will reconstruct it.
 - **`auto_start: false` is a silent outage.** Core keeps exporting to this
