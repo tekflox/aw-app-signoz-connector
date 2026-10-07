@@ -2,7 +2,7 @@
   "manifest_version": 1,
   "id": "signoz-connector",
   "name": "SigNoz Connector",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Forwards this workspace's OpenTelemetry traces, metrics and logs to a SigNoz you already have \u2014 a central one, or the aw-app-signoz of another workspace. One small OTel Collector container (~256 MB), no ClickHouse of its own: it receives OTLP from core and from this workspace's apps, stamps workspace.slug on everything, and ships it on with a retrying in-memory queue so a brief destination outage buffers instead of dropping. Optionally also exposes query MCP tools and a window onto the destination's own web UI, pointed at whatever Settings > Observability resolved \u2014 all managed, all blank (and therefore inert) by default. The destination is not configured here \u2014 it comes from Settings > Observability, which stays the single source of truth and pushes it in on save. If you want to STORE and BROWSE telemetry inside this workspace instead of forwarding it, install the full SigNoz app (aw-app-signoz) rather than this one.",
   "icon": "share-2",
   "tier": "container",
