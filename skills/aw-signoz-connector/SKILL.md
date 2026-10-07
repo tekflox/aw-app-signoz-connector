@@ -7,8 +7,10 @@ description: Send this workspace's OTLP telemetry (traces, metrics, logs) throug
 
 `aw-app-signoz-connector` is one small OpenTelemetry Collector container. It
 **receives** OTLP inside this workspace and **forwards** it to a SigNoz
-somewhere else. It has no ClickHouse, no UI, no window, and it stores nothing
-you can query.
+somewhere else. It has no ClickHouse and stores nothing itself — as of
+0.3.0 it CAN optionally expose query MCP tools and a web-UI window onto
+whatever it forwards to (see "Reading telemetry back" below), but it never
+owns that data.
 
 If you want to store and browse telemetry *inside* this workspace, you want
 the other app — **`aw-app-signoz`**, the full server. The two are
@@ -62,6 +64,29 @@ So:
 To point at the operator's central SigNoz, set Observability to **Custom**
 with the central's ingest endpoint and the shared ingest token. There is no
 `central` mode and nothing injects that token automatically — by design.
+
+## Reading telemetry back (query MCP + window, 0.3.0+)
+
+Forwarding and reading are separate, optional MANAGED fields — all three
+come from Settings → Observability → Custom, same as `endpoint`/`api_key`,
+never edited here:
+
+- `query_mcp_url` / `query_api_key` — turn on this app's own `signoz-query`
+  MCP tools, pointed at the destination's query API (e.g. the central's
+  `https://signoz-mcp.aw.tekflox.com/mcp`). Either blank disables the
+  upstream outright — no tools appear, no 401 on every call.
+- `web_ui_url` — turns on a "SigNoz" window in this app that is a plain
+  `iframe` onto the destination's own web UI. Blank hides the window. Set
+  with nothing, falls back to `query_mcp_url`'s value at push time (not
+  stored), so filling in the MCP URL alone still gets *something* to look
+  at — but it's worth setting this to the actual UI host on a central
+  deployment rather than relying on the fallback.
+
+This app never gets a sidecar for any of this and never administers the
+destination — no start/stop/restart control appears anywhere for it. If
+you installed the full `aw-app-signoz` instead, ignore all of this: that
+app has its own local query tools and its own window already, pointed at
+its own local instance.
 
 ## Is it actually working?
 

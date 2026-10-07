@@ -1,0 +1,15 @@
+{
+  "layout": "stack",
+  "regions": [
+    {
+      "id": "main",
+      "widgets": [
+        {
+          "type": "iframe",
+          "title": "SigNoz",
+          "src": "${config.web_ui_url}"
+        }
+      ]
+    }
+  ]
+}

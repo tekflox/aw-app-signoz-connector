@@ -1,0 +1,38 @@
+{
+  "_comment": [
+    "Query MCP tools for whichever SigNoz this connector forwards to —",
+    "exposed to agents through aw-mcp-gateway. NO sidecar: `type: http`",
+    "points straight at an EXTERNAL signoz-mcp-server (the central one at",
+    "signoz-mcp.aw.tekflox.com today), the same no-sidecar shape",
+    "aw-app-browser already uses for its own stdio upstream pointed at a",
+    "CDP endpoint in a different container. aw-app-signoz's own 'mcp'",
+    "sidecar is untouched — this is a SEPARATE set of tools for whoever",
+    "only has the connector installed, pointed at the connector's own",
+    "destination instead of a per-workspace SigNoz.",
+    "",
+    "This is a TEMPLATE. aw-workspace renders it into mcp.json — the file the",
+    "gateway's app-scan actually reads — on every activation and every config",
+    "save, resolving ${config.x} against this app's saved settings. Do not edit",
+    "the rendered mcp.json: it is overwritten, and the value you want lives in",
+    "the app's Settings instead.",
+    "",
+    "query_mcp_url / query_api_key are MANAGED — pushed by aw-workspace",
+    "core's src/api/observability.py::_push_connector_config alongside the",
+    "existing endpoint/api_key, resolved from Settings > Observability.",
+    "While either is empty, the renderer disables this server and the",
+    "gateway serves no query tools — deliberately, because an upstream",
+    "configured with an unresolved placeholder does not fail loudly. It",
+    "connects, gets a 401, and serves zero tools, which looks like a",
+    "broken app rather than an empty field."
+  ],
+  "mcpServers": {
+    "signoz-query": {
+      "enabled": true,
+      "type": "http",
+      "url": "${config.query_mcp_url}",
+      "headers": {
+        "SIGNOZ-API-KEY": "${config.query_api_key}"
+      }
+    }
+  }
+}

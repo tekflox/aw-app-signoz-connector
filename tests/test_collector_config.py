@@ -103,13 +103,14 @@ def test_manifest_port_is_the_otlp_http_port_core_will_dial(manifest, config):
         f"receiver endpoint {http_endpoint!r}")
 
 
-def test_the_app_exposes_no_window_and_no_public_ingest(manifest):
-    """Design §2: the connector's consumers are all inside the workspace, so
-    it contributes no window and publishes no ingest route. A window would
-    also imply a UI this app does not have."""
+def test_the_app_publishes_no_ingest_route_or_nav(manifest):
+    """Design §2: the connector's own OTLP consumers are all inside the
+    workspace, so it publishes no ingest route or nav entry. It DOES
+    contribute one window as of 0.3.0 (design §11) — an iframe onto the
+    destination's own web UI, not a UI this app renders itself — see
+    test_signoz_query_mcp.py for that window's own coverage."""
     contributes = manifest.get("contributes", {})
 
-    assert not contributes.get("windows")
     assert not contributes.get("routes")
     assert not contributes.get("nav")
 

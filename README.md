@@ -5,11 +5,17 @@ that lives **somewhere else** — the operator's central instance, or another
 workspace's `aw-app-signoz`.
 
 One container (~256 MB): a stock `otel/opentelemetry-collector-contrib`,
-pinned. No ClickHouse, no UI, no window, nothing to query. It receives OTLP
-inside the workspace, stamps `workspace.slug` on everything, and ships it on
-with a retrying in-memory queue so a brief destination outage buffers
-instead of dropping. (The design asked for a disk-backed one; it could not
-be shipped — see "Things that will bite".)
+pinned. No ClickHouse of its own. It receives OTLP inside the workspace,
+stamps `workspace.slug` on everything, and ships it on with a retrying
+in-memory queue so a brief destination outage buffers instead of dropping.
+(The design asked for a disk-backed one; it could not be shipped — see
+"Things that will bite".)
+
+As of 0.3.0 it can also optionally expose query MCP tools and a window onto
+the destination's own web UI (`query_mcp_url`/`query_api_key`/`web_ui_url`,
+all managed by Settings → Observability, all blank by default) — see
+`skills/aw-signoz-connector/SKILL.md`'s "Reading telemetry back" section.
+Still no sidecar and no lifecycle control of the destination either way.
 
 **Not the same app as `aw-app-signoz`.** That one is the full server —
 ClickHouse, query service, dashboards — for keeping telemetry *inside* this

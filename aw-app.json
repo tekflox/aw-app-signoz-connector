@@ -2,8 +2,8 @@
   "manifest_version": 1,
   "id": "signoz-connector",
   "name": "SigNoz Connector",
-  "version": "0.2.1",
-  "description": "Forwards this workspace's OpenTelemetry traces, metrics and logs to a SigNoz you already have \u2014 a central one, or the aw-app-signoz of another workspace. One small OTel Collector container (~256 MB), no ClickHouse and no UI of its own: it receives OTLP from core and from this workspace's apps, stamps workspace.slug on everything, and ships it on with a retrying in-memory queue so a brief destination outage buffers instead of dropping. The destination is not configured here \u2014 it comes from Settings > Observability, which stays the single source of truth and pushes it in on save. If you want to STORE and BROWSE telemetry inside this workspace instead of forwarding it, install the full SigNoz app (aw-app-signoz) rather than this one.",
+  "version": "0.3.0",
+  "description": "Forwards this workspace's OpenTelemetry traces, metrics and logs to a SigNoz you already have \u2014 a central one, or the aw-app-signoz of another workspace. One small OTel Collector container (~256 MB), no ClickHouse of its own: it receives OTLP from core and from this workspace's apps, stamps workspace.slug on everything, and ships it on with a retrying in-memory queue so a brief destination outage buffers instead of dropping. Optionally also exposes query MCP tools and a window onto the destination's own web UI, pointed at whatever Settings > Observability resolved \u2014 all managed, all blank (and therefore inert) by default. The destination is not configured here \u2014 it comes from Settings > Observability, which stays the single source of truth and pushes it in on save. If you want to STORE and BROWSE telemetry inside this workspace instead of forwarding it, install the full SigNoz app (aw-app-signoz) rather than this one.",
   "icon": "share-2",
   "tier": "container",
   "category": "Observability",
@@ -45,6 +45,16 @@
         "path": "skills/aw-signoz-connector/SKILL.md",
         "description": "Send this workspace's OTLP telemetry through the SigNoz connector \u2014 the internal endpoint to point a sender at, where the destination actually comes from, and how to tell whether it is reaching it."
       }
+    ],
+    "windows": [
+      {
+        "id": "signoz-connector.ui",
+        "title": "SigNoz",
+        "body": {
+          "type": "declarative",
+          "spec": "windows/signoz_ui.json"
+        }
+      }
     ]
   },
   "config_schema": {
@@ -68,6 +78,25 @@
         "default": true,
         "title": "Auto-start",
         "description": "Start the connector when the workspace starts. Turning this off stops forwarding; core notices nothing and keeps exporting to this container's address, so telemetry is lost while it is down \u2014 leave it on unless you are deliberately taking forwarding offline."
+      },
+      "query_mcp_url": {
+        "type": "string",
+        "default": "",
+        "title": "Query MCP server URL (managed)",
+        "description": "MANAGED VALUE \u2014 do not edit by hand, same as endpoint/api_key above. Written by Settings > Observability (aw-workspace core's src/api/observability.py). The MCP endpoint of whichever SigNoz this connector forwards to \u2014 e.g. https://signoz-mcp.aw.tekflox.com/mcp for the central. Empty disables this app's query tools (mcp.template.json) instead of connecting and 401ing."
+      },
+      "query_api_key": {
+        "type": "string",
+        "default": "",
+        "title": "Query MCP credential (managed)",
+        "x-secret": true,
+        "description": "MANAGED VALUE \u2014 do not edit by hand, same as the fields above. A SigNoz-native API key (SIGNOZ-API-KEY header), NOT this workspace's own api_key above \u2014 that one authenticates OTLP ingest, this one authenticates MCP query calls against the destination's /api/v1/service_accounts/me-gated edge."
+      },
+      "web_ui_url": {
+        "type": "string",
+        "default": "",
+        "title": "SigNoz web UI URL (managed)",
+        "description": "MANAGED VALUE \u2014 do not edit by hand. Written by Settings > Observability; falls back to the same host as query_mcp_url when not set separately, since the central's MCP server and its web UI are the same host today. Empty hides this app's SigNoz window instead of showing a blank iframe."
       }
     },
     "required": []
