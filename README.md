@@ -160,3 +160,5 @@ design §8.7), every `${env:...}` in the collector config having a `:-`
 fallback (otelcol treats an unset reference as fatal and would crash-loop),
 and `runtime.port` matching the OTLP/HTTP receiver port (core dials
 `base_url()` == `http://<container>:<runtime.port>`).
+
+<!-- fleet migration batch 1: follow-up no-op to prove the review/merge loop end-to-end -->
